@@ -1,0 +1,96 @@
+sudo: required
+language: c
+services: docker
+cache: ccache
+
+env:
+  global:
+    - DOCKERHUB_IMG=yhnw/openwrt-sdk
+    - BINTRAY_USER=hnw
+    - BINTRAY_REPO=openwrt-packages
+    - PKG_NAME=netstat-nat
+    - QUIET=1 # 1: suppress build log / "": output all
+    #- secure: ""
+  matrix:
+    - DISTRO=15.05.1 ARCH=ar71xx PKG_DIR=bin/ar71xx/packages
+    - DISTRO=lede    ARCH=ar71xx PKG_DIR=bin/packages/mips_24kc
+
+before_install:
+  - docker version
+  - ccache -s | tee ccache.log
+
+script:
+  - docker run --rm -u openwrt -v $PWD:/work -v $HOME/.ccache:/home/openwrt/.ccache ${DOCKERHUB_IMG}:${DISTRO}-${ARCH} /bin/bash /work/build.sh ${DISTRO}-${ARCH} $PKG_DIR $PKG_NAME $QUIET
+  - ls -la
+  - |
+    echo '### before build ###' &&
+    cat ccache.log &&
+    echo &&
+    echo '### after build ###' &&
+    ccache -s
+
+after_failure:
+  - if [[ -e build.log ]]; then tail -300 build.log; fi
+
+before_deploy:
+  - |
+    if [[ ! -e "descriptor.json" ]]; then
+      if [[ -n "$TRAVIS_TAG" ]]; then
+        export VERSION=stable;
+        export VCS_TAG="$TRAVIS_TAG";
+        export DESC="Stable release";
+        export UPLOAD_DIR_SUFFIX=;
+      else
+        export VERSION=develop;
+        export VCS_TAG=HEAD;
+        export DESC="Development snapshot";
+        export UPLOAD_DIR_SUFFIX=-dev;
+      fi;
+      export RELEASED=$(date +%Y-%m-%d);
+      UPLOAD_EXT=ipk envsubst < descriptor.json.in > descriptor.json;
+      cat descriptor.json;
+      UPLOAD_EXT=sig PKG_NAME=zzz0-metadata-signature envsubst < descriptor.json.in > descriptor-sig.json;
+      cat descriptor-sig.json;
+    fi
+
+after_deploy:
+  - |
+    if [[ ! -e "pkgs-for-bintray/Packages" ]] ; then
+      sleep 4;
+      for file in Packages Packages.gz; do
+        for retry in $(seq 1 10); do
+          if [[ ! -e "pkgs-for-bintray/$file" ]] ; then
+            wget -P pkgs-for-bintray https://dl.bintray.com/${BINTRAY_USER}/${BINTRAY_REPO}/${DISTRO}/${ARCH}${UPLOAD_DIR_SUFFIX}/$file && break;
+          fi
+          sleep 2
+        done
+      done
+    fi
+  - |
+    if [[ -e "pkgs-for-bintray/Packages" && ! -e "pkgs-for-bintray/Packages.sig" ]] ; then
+      echo docker run --rm -u openwrt -v $PWD:/work ${DOCKERHUB_IMG}:${DISTRO}-${ARCH} /bin/bash /work/sign.sh USIGN_SECRET_KEY;
+    fi
+
+deploy:
+  - provider: bintray
+    file: "descriptor.json"
+    user: ${BINTRAY_USER}
+    key:
+      secure: "XqfSYCGrnqW7W1hwQp3hig1ZGIapZ4XINOXHLwvyZY17lFiE7mDLHZMoHNF2Q72umYCOjEL5yhZAVT3bJpFqIqzEaKd69rAZ0P0oLMTbNpnZhgYeLJlD0Ag3rd+wm8FSnTWLeztVxKob/3W/dbe7XvjaXnPdn3O8LrNbbj+rFqXS6QMWMjQcco+jaoLL5BfeJaOxwhiNRV31jkOkBrnBYg14AO46c8OzrnTcUJlFwjMM41lOUGmFYj/Jk0gQ+bSBO15Oh75t/sAY3T76RMGjM8xff3qZA0U6r7pD/KLcWRrSi5dYDL6gfAj5md0ft6uPFRQpJlHpUefCIPnPEpAhDkgSteWZxOHT5jWNoPuOwjqHTJLIfBGA+w34WAxCquBAeHVfXkoPDaxDV1gSN2rrh1cuOt/k9nYKvyG6YXsdkYXeG+JazspQR7KeAhybddiz6Cx3eSt24AO62FN1PoRqbV47l/e8n4bAv2qAGJeFH1BK9OoZcNcR1qDg2LmpbOSfwUxn848vaWhHuxEiw+oVa57rfT7X3v5O/bRCCK/TlwwjA8NaSMabdaPRAO8hB0+RxKZFy7sdWUmTGdSLWkILvVmO1okQWEGdWD/EXIQj2Ts16fOhjoq47jpGItD7QQ3LsJzBc0HnhkIFJ7+jPPEG3J5Oa4sLyiF/RKRKfWNFJYI="
+    on:
+      all_branches: true
+  - provider: bintray
+    file: "descriptor-sig.json"
+    user: ${BINTRAY_USER}
+    key:
+      secure: "XqfSYCGrnqW7W1hwQp3hig1ZGIapZ4XINOXHLwvyZY17lFiE7mDLHZMoHNF2Q72umYCOjEL5yhZAVT3bJpFqIqzEaKd69rAZ0P0oLMTbNpnZhgYeLJlD0Ag3rd+wm8FSnTWLeztVxKob/3W/dbe7XvjaXnPdn3O8LrNbbj+rFqXS6QMWMjQcco+jaoLL5BfeJaOxwhiNRV31jkOkBrnBYg14AO46c8OzrnTcUJlFwjMM41lOUGmFYj/Jk0gQ+bSBO15Oh75t/sAY3T76RMGjM8xff3qZA0U6r7pD/KLcWRrSi5dYDL6gfAj5md0ft6uPFRQpJlHpUefCIPnPEpAhDkgSteWZxOHT5jWNoPuOwjqHTJLIfBGA+w34WAxCquBAeHVfXkoPDaxDV1gSN2rrh1cuOt/k9nYKvyG6YXsdkYXeG+JazspQR7KeAhybddiz6Cx3eSt24AO62FN1PoRqbV47l/e8n4bAv2qAGJeFH1BK9OoZcNcR1qDg2LmpbOSfwUxn848vaWhHuxEiw+oVa57rfT7X3v5O/bRCCK/TlwwjA8NaSMabdaPRAO8hB0+RxKZFy7sdWUmTGdSLWkILvVmO1okQWEGdWD/EXIQj2Ts16fOhjoq47jpGItD7QQ3LsJzBc0HnhkIFJ7+jPPEG3J5Oa4sLyiF/RKRKfWNFJYI="
+    on:
+      all_branches: true
+  - provider: releases
+    api_key:
+      secure: "KOlqa1N3QUjeRU8/U449pqhlK7LL3lvgbjC/7HviO447l53j72ZdYor6tSaDlHPkNSMm7SkagkQzurB9Ftx25n+gMfG3WVO/PmMLwgPmh+YSKJl1Rsn7abPWPsg+jw9cLnp3wRzqU13g7z37lFz6+KovEMyQxXZq726D8a9vHLfwoXeQlQNGFsIpE+K18sSz9BpZ1TLouJC5+1Rrjv3Z+xS0UcN7iYAt9suSE4CK9En4duxPfUT4ZVtsgHZOCjMGKXU/fUYfEVQ6eTfejNuVddPdZ8P29Yu+cz+0HN1SmkceuDbUoAqkOMBveKA+s8utABtvzBdNT7bIWvzEwunbpT48eHmxhjPHBAqJ2lRrbK+MxLls7gG/bzPAAFfozW9r3YiutqjzdgwagV0VX9PrFu+sU2tuPESmGnjZBAfUX44oOc1MPJeNlY2Wp7slOeCRGtY5zOaEvWZh4Ejp4PXc7J70MWwo1bU6poqmBqCbh3e73AklXY1+0+Hw+N6DRHcdHlVhve2Pc8WhVc4RLESADieLVVHq01WZzh19idrPJrIIqibHOGJhdsLJblQPAF+xCkYe1iFY/xplXo0G9DsLYosTiUA5fz1cy5G/zzMlRvP8521SyGpaZtRF81AVgR0jomk8QSbwky4aRwzNVAsuNb4KbrW3ERn+lUFHl3G6bnw="
+    file_glob: true
+    file: "pkgs-for-github/*.ipk"
+    skip_cleanup: true
+    on:
+      tags: true
