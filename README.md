@@ -1,20 +1,10 @@
-# openwrt-packages-netstat-nat
+# openwrt-packages-netstat-nat [![Build Status](https://secure.travis-ci.org/hnw/openwrt-packages-netstat-nat.svg?branch=master)](https://travis-ci.org/hnw/openwrt-packages-netstat-nat)
 
-This is `netstat-nat` package for OpenWrt, tested on CC(15.05.1).
+This is [netstat-nat](http://tweegy.nl/projects/netstat-nat/) package for OpenWrt, tested on OpenWrt 15.05.1 / LEDE 17.01.4.
 
 # How to install binary package
 
-```
-$ opkg update
-$ opkg install openssl-util
-$ echo 'src/gz hnw https://dl.bintray.com/hnw/openwrt-packages/15.05.1/ar71xx' >> /etc/opkg/customfeeds.conf
-$ cat > /tmp/public.key
-untrusted comment: public key ad619e57963caac
-RWQK1hnleWPKrKzKxpRlpYZVtkWvCVmw7HbukOaGFqeJg8o01UTv7RML
-$ opkg-key add /tmp/public.key
-$ opkg update
-$ opkg install netstat-nat
-```
+See [hnw/openwrt-packages](https://github.com/hnw/openwrt-packages).
 
 # How to build
 
