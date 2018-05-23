@@ -11,7 +11,8 @@ See [hnw/openwrt-packages](https://github.com/hnw/openwrt-packages).
 To build these packages, add the following line to the feeds.conf in the OpenWrt buildroot:
 
 ```
-$ echo 'src-git hnw_netstat-nat https://github.com/hnw/openwrt-packages-netstat-nat.git' >> feeds.conf
+$ cp feeds.conf.default feeds.conf # if needed
+$ echo 'src-git hnw_netstat_nat https://github.com/hnw/openwrt-packages-netstat-nat.git' >> feeds.conf
 ```
 
 Then you can build packages as follows:
@@ -19,5 +20,7 @@ Then you can build packages as follows:
 ```
 $ ./scripts/feeds update -a
 $ ./scripts/feeds install netstat-nat
-$ make packages/netstat-nat/compile
+$ make defconfig
+$ make package/toolchain/compile
+$ make package/netstat-nat/compile
 ```
